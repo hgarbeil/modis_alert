@@ -246,15 +246,15 @@ void modis_process::process () {
 }
 
 
-float modis_process::calc_alert (FILE *outfile) {
+void modis_process::calc_alert (char *outfile) {
 	char hdrfile [420] ;
 	int i, ib, npix ;
 	float val21,val22,val32, val6 ;
 
 	npix = 2030 * 1354L ;
-	float *alert = new new float [npix] ;
+	float *alert = new float [npix] ;
 	
-	if (dflag) 
+	if (therm->dayflag) 
 	for (i=0; i<npix; i++) {
 		// band 6,21,22, 32
 		val6  = therm->refdata_cal[i] ;	

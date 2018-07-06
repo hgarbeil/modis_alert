@@ -15,6 +15,7 @@
 #include "modis_hdf.h"
 #include "modis_process.h"
 #include "surftemp.h"
+#include <boost/filesystem/path.hpp>
 
 
 using namespace std;
@@ -37,16 +38,25 @@ int main(int argc, char** argv) {
 	int stuff [4] ;
 	modis_hdf *geom, *therm ;
 	modis_process *mproc ;
+
 	//strcpy (flist, argv[1]) ;
 	// get MOD021KM file
+	/*
 	strcpy (tfile, *++argv) ;
 	// get MOD03 file
 	strcpy (mfile, *++argv) ;
 	// get output file
 	strcpy (ofile, *++argv) ;
+	*/
+
+	boost::filesystem::path p("/home/harold/workdir") ;
+	//char sep = p.preferred_separator ;
+	char sep = boost::filesystem::path::preferred_separator ;
+
+	cout << "Separator is "<< sep << endl ;
 	geom = new modis_hdf (mfile) ;
-	FILE *fout = fopen ("nightfiles.txt", "w") ;
 	FILE *fin = fopen (flist, "r") ;
+	FILE *fout = fopen ("/home/harold/junk", "w") ;
 	if (fin == NULL) {
 		cout << " Could not open " << flist << endl ;
 		exit(-1) ;
