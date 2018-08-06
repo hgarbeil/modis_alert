@@ -14,7 +14,10 @@ class modis_process {
 	int nsamps, nlines, ns, nl, mon ;
 	float startlat, startlon, endlat, endlon, gspace ;
 	float *distarr, *bandsarr, *temp ;
+	float day_limit, night_limit ;
 	modis_hdf *geom, *therm ;
+	// alert indices
+	vector <int> alinds ;
 
 
 	public :

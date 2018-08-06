@@ -9,9 +9,13 @@ modis_process::modis_process () {
 	distarr = 0L ;
 	bandsarr = 0L ;
 	temp = 0L ;
+	alerts = 0L ;
 	nl = 2030 ;
 	ns = 1354 ;
 	gridspace = 0.1 ;
+	day_limit = -.6 ;
+	night_limit = -.8 ;
+	alerts = new float [ns * nl] ;
 
 
 }
@@ -20,6 +24,7 @@ modis_process::~modis_process () {
 
 	delete [] bandsarr ;
 	delete [] distarr ;
+	delete [] alerts ;
 	if (temp) delete [] temp ;
 }
 
@@ -249,10 +254,10 @@ void modis_process::process () {
 void modis_process::calc_alert (char *outfile) {
 	char hdrfile [420] ;
 	int i, ib, npix ;
-	float val21,val22,val32, val6 ;
+	float val21,val22,val32, val6, alval ;
 
 	npix = 2030 * 1354L ;
-	float *alert = new float [npix] ;
+	alinds.clear() ;
 	
 	if (therm->dayflag) 
 	for (i=0; i<npix; i++) {
@@ -264,7 +269,10 @@ void modis_process::calc_alert (char *outfile) {
 		if (val21 > val22) 
 			val22 = val21 ;
 		val22 = val22 - .0426 * val6 ;
-		*(alert+i) = (val22 - val32) / (val22 + val32) ;
+		alval = (val22 - val32) / (val22 + val32) ;
+		if (alval < night_limit) 
+			alinds.push_back(i) ;
+		*(alert+i) = alval ;
 	}
 	else 
 	for (i=0; i<npix; i++) {
@@ -276,20 +284,36 @@ void modis_process::calc_alert (char *outfile) {
 		// check if val22 is saturated, then use val21
 		if (val21 > val22) 
 			val22 = val21 ;
-		*(alert+i) = (val22 - val32) / (val22 + val32) ;
+		alval = (val22 - val32) / (val22 + val32) ;
+		if (alval < day_limit) 
+			alinds.push_back(i) ;
+		*(alert+i) = alval ;
 	}
 
-	FILE *fout = fopen (outfile, "w") ;
-	fwrite ((char *)alert, 4, npix, fout) ;
-	fclose (fout) ;
 
-	strcpy (hdrfile, outfile) ;
-	strcat (hdrfile, ".hdr") ;
-	write_header (hdrfile, 1) ;
-
-	delete [] alert ;
 
 }
+
+// write out each alert to an appended file with the following columns
+// mod21 filename
+// year
+// month
+// day
+// sol zenith
+// b21
+// b22
+// b32
+// alert value
+void modis_process::write_alert_textfile (char *outfile) {
+	FILE *fout = fopen (outfile, "a+") ;
+	int nalerts = alinds.count ;
+
+}
+
+
+
+
+
 
 void modis_process::write_output (char *outfile) {
 	char hdrfile [420] ;
