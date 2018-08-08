@@ -64,19 +64,36 @@ void modis_hdf::get_date_period (char *infile, int *datearr) {
 
 }
 
-void modis_hdf::init_MOD21 () {
-	thermdata = new uint16 [16 * 1354 * 2030L] ;
-	th_scales_offsets = new float [2 * 16] ;
-	refldata = new uint16 [5 * 1354 * 2030] ;
-	refl_scales_offsets = new float [2 * 5] ;
-	raddata_cal = new float [3 * 1354 * 2030L] ;
-	refdata_cal = new float [1 * 1354 * 2030L] ;
-	load_refSB_bands() ;
-	calib_refSB_bands() ;
-	load_thermal_bands() ; //calib_thermal_bands() ;
-	calib_thermal_bands() ;
+void modis_hdf::init_MOD21() {
+    thermdata = new uint16 [16 * 1354 * 2030L];
+    th_scales_offsets = new float [2 * 16];
+    refldata = new uint16 [5 * 1354 * 2030];
+    refl_scales_offsets = new float [2 * 5];
+    raddata_cal = new float [3 * 1354 * 2030L];
+    refdata_cal = new float [1 * 1354 * 2030L];
+    load_refSB_bands();
+    calib_refSB_bands();
+    load_thermal_bands(); //calib_thermal_bands() ;
+    calib_thermal_bands();
 
 
+}
+
+// this function takes the full path of the hdf file (ifile) and will output only the 
+// filename, this is used for output file naming  and writing to a pre-specified directory
+void modis_hdf::get_file_name (char *ifile, char *outfname) {
+    char workfil[420], fname[420], *tmp ;
+    
+    strcpy (workfil, ifile) ;
+    tmp = strtok (workfil, "\\/") ;
+    // search for the last file separator
+    while (1){
+        tmp = strtok (NULL, "\\/") ;
+        if (tmp == NULL) break ;
+        strcpy (fname, tmp) ;
+    }
+    strcpy (outfname, fname) ;
+    
 }
 
 
@@ -150,7 +167,7 @@ void modis_hdf::load_geometry () {
 	for (i=0; i<n_datasets; i++) {
 		sds_id = SDselect (sd_id, i) ;
 		SDgetinfo (sds_id, name, &rank, dim_sizes, &num_type, &attributes) ;
-		printf ("%d  : %s\r\n", sd_id, name) ;
+		//printf ("%d  : %s\r\n", sd_id, name) ;
 		if (!strcmp(name, "Latitude")) {
 			SDreaddata (sds_id, startarr, stride, edge, latarr) ; 
 			SDendaccess (sds_id) ;
@@ -219,11 +236,11 @@ void modis_hdf::load_thermal_bands() {
 			strcpy (attrb_name, "radiance_offsets") ;
 			attnum = SDfindattr (sds_id, attrb_name);
 			SDreadattr (sds_id, attnum, &th_scales_offsets[16]) ;
-			for (is=0; is<16; is++) {
-				cout << "band : "<< is << "  scale : " << th_scales_offsets [is] << 
-					"  offsets : " << th_scales_offsets[16+is] << endl ;
-
-			}
+//			for (is=0; is<16; is++) {
+//				cout << "band : "<< is << "  scale : " << th_scales_offsets [is] << 
+//					"  offsets : " << th_scales_offsets[16+is] << endl ;
+//
+//			}
 			SDreaddata (sds_id, startarr, stride, edge, thermdata) ;
 			SDendaccess (sds_id) ;
 			
@@ -259,11 +276,11 @@ void modis_hdf::load_refSB_bands() {
 			strcpy (attrb_name, "radiance_offsets") ;
 			attnum = SDfindattr (sds_id, attrb_name);
 			SDreadattr (sds_id, attnum, &refl_scales_offsets[5]) ;
-			for (is=0; is<5; is++) {
-				cout << "band : "<< is << "  scale : " << refl_scales_offsets [is] << 
-					"  offsets : " << refl_scales_offsets[5+is] << endl ;
-
-			}
+//			for (is=0; is<5; is++) {
+//				cout << "band : "<< is << "  scale : " << refl_scales_offsets [is] << 
+//					"  offsets : " << refl_scales_offsets[5+is] << endl ;
+//
+//			}
 			SDreaddata (sds_id, startarr, stride, edge, refldata) ;
 			SDendaccess (sds_id) ;
 			
@@ -294,9 +311,9 @@ void modis_hdf::calib_thermal_bands () {
 			raddata_cal[i*npix+is]=(val-offv) * scalev ;
 		}
 	}
-	//FILE *fout = fopen ("foutdat", "w") ;
-	//fwrite ((char *)raddata_cal,4,3*1354l*2030L, fout) ;
-	//fclose(fout) ;
+	FILE *fout = fopen ("/home/harold/foutdat", "w") ;
+	fwrite ((char *)raddata_cal,4,3*1354l*2030L, fout) ;
+	fclose(fout) ;
 
 }
 

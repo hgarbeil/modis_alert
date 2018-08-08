@@ -26,74 +26,92 @@ using namespace std;
 int main(int argc, char** argv) {
 
 
-	vector<lst_coord> mc ;
-	lst_coord tcoord ;
-	char outstr[800], tfile [420], mfile[420], ofile[420], flist[420] ;
-	int minind ;
-	float testtemp ;
-	float rlat, rlon,  pvals[6] ;
-	rlat = 19.333 ;
-	rlon = -155.333 ;
-	
-	int stuff [4] ;
-	modis_hdf *geom, *therm ;
-	modis_process *mproc ;
+    vector<lst_coord> mc;
+    lst_coord tcoord;
+    char outstr[800],  tfile [420], mfile[420], ofile[420], flist[420], outpref[420], outputfile[420];
+    char *sufind ;
+    int minind ;
+    float testtemp;
+    float rlat, rlon, pvals[6];
+    rlat = 19.333;
+    rlon = -155.333;
 
-	//strcpy (flist, argv[1]) ;
-	// get MOD021KM file
-	/*
-	strcpy (tfile, *++argv) ;
-	// get MOD03 file
-	strcpy (mfile, *++argv) ;
-	// get output file
-	strcpy (ofile, *++argv) ;
-	*/
+    int stuff [4];
+    modis_hdf *geom, *therm;
+    modis_process *mproc;
 
-	boost::filesystem::path p("/home/harold/workdir") ;
-	//char sep = p.preferred_separator ;
-	char sep = boost::filesystem::path::preferred_separator ;
+    // get ASCII file with emiss, geom hdf files
+    strcpy (flist, *++argv) ;
+    // get output path 
+    strcpy (outpref, *++argv) ;
+    
+    
+    cout << "File list is : " << flist << endl ;
+    // get MOD021KM file
 
-	cout << "Separator is "<< sep << endl ;
-	geom = new modis_hdf (mfile) ;
-	FILE *fin = fopen (flist, "r") ;
-	FILE *fout = fopen ("/home/harold/junk", "w") ;
-	if (fin == NULL) {
-		cout << " Could not open " << flist << endl ;
-		exit(-1) ;
-	}
-	mproc = new modis_process () ;
-	while (!feof(fin)) {
-		fscanf (fin, "%s %s",tfile, mfile) ;
+    //strcpy(tfile, *++argv);
+    // get MOD03 file
+    //strcpy(mfile, *++argv);
+    // get output file
+    //strcpy (ofile, *++argv) ;
 
-	
-		therm = new modis_hdf (tfile) ;
-		therm->get_date_period(tfile, stuff) ; 
-		geom = new modis_hdf (mfile) ;
-		mproc->set_modis_hdfs (geom, therm) ;
-		mproc->set_month (stuff[1]) ;
-	//mproc->procalert() ;
-	//mproc->write_output ("output.dat") ;
-		mproc->get_nearest_pixel (rlat, rlon, &minind, pvals) ;
-		cout << "Dayflag is " << geom->dayflag << endl ;
-		if (!geom->dayflag && pvals[0]<1200.) 
-		{
-			sprintf (outstr, 
-				"%s\t%d\t%d\t%d\t%d\t%f\t%f\t%f\t%f\t%f\t%f", 
-				tfile, stuff[0], stuff[1], stuff[2], stuff[3], 
-				pvals[0], pvals[5], pvals[1], pvals[2], pvals[3],pvals[4]) ;	
-			fprintf (fout, "%s\r\n", outstr) ;
-			fflush (fout) ;
-		}
-		cout << flush ;
-		delete geom ;
-		delete therm ;
 
-	}
-    delete mproc ;
+    boost::filesystem::path p("/home/harold/workdir");
+    //char sep = p.preferred_separator ;
+    char sep = boost::filesystem::path::preferred_separator;
+    outpref [strlen(outpref)] = sep ;
+    outpref [strlen(outpref)-1] ='\0' ;
+    
+    cout << "Separator is " << sep << endl;
+   
+    FILE *fin = fopen(flist, "r");
+   
+    if (fin == NULL) {
+        cout << " Could not open " << flist << endl;
+        exit(-1);
+    }
+    mproc = new modis_process();
+    while (!feof(fin)) {
+        fscanf(fin, "%s %s", tfile, mfile);
 
-    fclose (fin) ;
 
-    fclose (fout) ;
+        therm = new modis_hdf(tfile);
+        therm->get_file_name (tfile, ofile) ;
+        
+        sufind = strstr (ofile, ".hdf") ;
+        strncpy (sufind, "_out", 4) ;
+        strcpy (outputfile, outpref) ;
+        strcat (outputfile, ofile) ;
+        cout << "Output file will be " << outputfile << endl ;
+        therm->get_date_period(tfile, stuff);
+        geom = new modis_hdf(mfile);
+        mproc->set_modis_hdfs(geom, therm);
+        mproc->set_bounds (20.33, -156.2, 18.8, -154.6, .008) ;
+        mproc->process() ;
+        mproc->set_month(stuff[1]);
+        //mproc->procalert() ;
+        mproc->write_output (ofile) ;
+        mproc->get_nearest_pixel(rlat, rlon, &minind, pvals);
+        cout << "Dayflag is " << geom->dayflag << endl;
+        if (!geom->dayflag && pvals[0] < 1200.) {
+            sprintf(outstr,
+                    "%s\t%d\t%d\t%d\t%d\t%f\t%f\t%f\t%f\t%f\t%f",
+                    tfile, stuff[0], stuff[1], stuff[2], stuff[3],
+                    pvals[0], pvals[5], pvals[1], pvals[2], pvals[3], pvals[4]);
+            //fprintf(fout, "%s\r\n", outstr);
+            //fflush(fout);
+        }
+        cout << flush;
+        delete geom;
+        delete therm;
+        break ;
+
+    }
+    delete mproc;
+
+    fclose(fin);
+
+   // fclose(fout);
     return 0;
 }
 
