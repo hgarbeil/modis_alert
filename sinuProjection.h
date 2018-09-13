@@ -6,7 +6,9 @@
 
 /* 
  * File:   sinuProjection.h
- * Author: harold
+ * Purpose : Header file for the sinusoidal projection class. This class is used to relate latitude longitude to an xy 
+ * system based upon the sinusoidal projection, commonly used for modis global daasets.
+ * Author: harold garbeil
  *
  * Created on August 3, 2018, 9:29 AM
  */
@@ -14,7 +16,11 @@
 #ifndef SINUPROJECTION_H
 #define SINUPROJECTION_H
 
-#define DTOR  0.017453
+#include <math.h>
+#include <iostream>
+#include <vector>
+
+using namespace std ;
 
 class sinuProjection {
 public:
@@ -22,9 +28,13 @@ public:
     sinuProjection(const sinuProjection& orig);
     virtual ~sinuProjection();
     void set_parameters (float radius, float centmeridian)  ;
+    void fillGrid (int mon, int aq_terra_flag, float ulc_lat, float ulc_lon, float gridspace, int nx, int ny, float *outarr) ; 
     void latlon_to_xy (float lat, float lon, float *x, float *y) ;
     void xy_to_latlon (float x, float y, float *lat, float *lon) ;
-    
+    //void getValues(float lat, float lon, float *vals) ;
+    void getCorrespondingValues(vector<int> alinds, int mon, int aq_terra_flag, float *lat, float *lon, float *vals) ;
+    float mDegToRad, wrld_startx, wrld_starty, gspace ;
+    char basef[420] ;
 private:
     float Radius ;
     float cent_merid ;

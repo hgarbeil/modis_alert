@@ -1,8 +1,6 @@
 #ifndef ALERTDB_H
 #define ALERTDB_H 1
 #endif
-//#include "support/configCosmos.h"
-//#include "math/mathlib.h"
 #include <cstdint>
 #include <cstdio>
 #include <cmath>
@@ -11,15 +9,12 @@
 using std::string;
 #include <vector>
 using std::vector;
-//#include "plotfunc.h"
+#include "trig.h"
 
 #define TEMPB21(x)   (3634.22/log(1.2246e11/(1e6*x)+1.))
 #define RADB21(x) (1.2246e5/(exp(3634.22/(x))-1.))
 #define ALERT_SAT_TERRA			1
 #define ALERT_SAT_AQUA			2
-const double DTOR=(M_PIl / (double)180.);
-#define RADOF(deg)  (double)(DTOR * (deg))
-#define RADOF(deg)  (double)(DTOR * (deg))
 
 enum class ByteOrder : std::uint8_t {
     //! Big Endian byte order
@@ -66,11 +61,15 @@ struct gst_handle
 } ;
 
 const size_t lst_size = 1200;
-const double lst_radius = 6371007.181;
-const double lst_step = M_PIl / 18.;
+const double modis_radius = 6371007.181;
+const double lst_step = M_PI / 18.;
 const size_t lst_max_quad = 36;
 
-enum class lst_period : size_t
+const uint16_t m02ssh_height = 240 * 18;
+const uint16_t m02ssh_width = 2 * m02ssh_height;
+const double m02ssh_step = M_PI / (m02ssh_height);
+
+enum class modis_period : size_t
 {
     AQUA_NIGHT,
     TERRA_DAY,
@@ -78,7 +77,28 @@ enum class lst_period : size_t
     TERRA_NIGHT
 };
 
-struct lst_coord
+struct m02ssh_coordvalue
+{
+    size_t vindex;
+    size_t hindex;
+    float lat;
+    float lon;
+    uint16_t jday;
+    modis_period period;
+    float mean;
+    float std;
+    uint16_t count;
+};
+
+struct m02ssh_handle
+{
+    bool loaded = false;
+    vector<vector<float> > mean;
+    vector<vector<float> > std;
+    vector<vector<uint16_t>> count;
+};
+
+struct lst_coordvalue
 {
     size_t vgrid;
     size_t hgrid;
@@ -87,7 +107,7 @@ struct lst_coord
     double lat;
     double lon;
     size_t month;
-    lst_period period;
+    modis_period period;
     double mean;
     double std;
 };
@@ -97,21 +117,16 @@ struct lst_quad
     size_t vgrid;
     size_t hgrid;
     size_t month;
-    lst_period period;
+    modis_period period;
     double date;
-//    double ullat;
-//    double ullon;
-//    double lrlat;
-//    double lrlon;
     FILE *ff;
-    vector<vector<double> > mean;
-    vector<vector<double> > std;
-//    double mean[lst_size][lst_size];
-//    double std[lst_size][lst_size];
+    vector<vector<float> > mean;
+    vector<vector<float> > std;
 } ;
 
 struct lst_handle
 {
+    string base;
     size_t hgrid;
     size_t vgrid;
     size_t qindex;
@@ -132,15 +147,22 @@ struct calstruc
 };
 
 
+int32_t m02ssh_index(m02ssh_coordvalue &coord);
+int32_t mo2ssh_coord(m02ssh_coordvalue &coord);
+int32_t m02ssh_open(string product, uint16_t jday, modis_period period);
+int32_t m02ssh_read(vector<m02ssh_coordvalue> &coords);
 
+int32_t gst_read(vector<lst_coordvalue> &coords);
 int32_t gst_read(alert_entry alert, double result[]);
 int32_t gst_open();
 int32_t gst_close();
-int32_t lst_read(vector<lst_coord> &coords);
-int32_t lst_open();
-int32_t lst_load(lst_coord &coord);
+
+int32_t lst_read(vector<lst_coordvalue> &coords);
+int32_t lst_open(string base="lst");
+int32_t lst_load(lst_coordvalue &coord);
 int32_t lst_close();
-int32_t lst_index(lst_coord &coord);
+int32_t lst_index(lst_coordvalue &coord);
+int32_t lst_coord(lst_coordvalue &coord);
 calstruc mjd2cal(double mjd);
 int32_t mjd2ymd(double mjd, int32_t &year, int32_t &month, double &day, double &doy);
 double currentmjd(double offset);

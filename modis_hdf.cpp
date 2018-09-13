@@ -6,6 +6,7 @@ modis_hdf::modis_hdf (char *infile) {
 	aquaflag = false ;
 	thermFlag = false ;
 	dayflag = false ;
+        aq_terra_flag = 0 ;
 	if (strstr (infile, "MYD")) {
 		aquaflag = true ;
 	}
@@ -26,7 +27,8 @@ modis_hdf::modis_hdf (char *infile) {
 
 void modis_hdf::get_date_period (char *infile, int *datearr) {
 	
-	int imon, days_in_month[] ={31,28,31,30,31,30,31,31,30,31,30,31} ;
+	//int imon, days_in_month[] ={31,28,31,30,31,30,31,31,30,31,30,31} ;
+        int imon, days_in_month[] = {32,30,30,31,30,31,30,31,30,30,31,30} ;
 
 	char cfile [420], *tmp ;
 	int year, iyear, yday, yday1, mday, mon, hr ;
@@ -107,6 +109,7 @@ void modis_hdf::init_MOD03 () {
 	solsens = new float [4 * 1354 * 2030] ;
 	load_geometry () ;
 	calib_geometry () ;
+        get_aq_terra_flag () ;
 
 }
 
@@ -203,6 +206,33 @@ void modis_hdf::load_geometry () {
 	else dayflag= true ;
 
 
+}
+/**
+ * 
+ * @return is the aq_terra_flag which distinguished if the file is aqua, terra and nighttime or daytime
+ *  aqua (0 night 2 day) terra (3 night 1 day)
+ */
+void modis_hdf::get_aq_terra_flag () {
+    // if daytime, enter this loop
+    
+    if (dayflag) {
+        if (aquaflag) {
+            aq_terra_flag = 2 ;
+            return ;
+        }
+        else {
+            aq_terra_flag = 1 ;
+            return ;
+        } 
+            
+        
+    }
+    // if still here, this is a nighttime image
+    if (aquaflag) {
+        aq_terra_flag = 0 ;
+        return  ;
+    }    
+    aq_terra_flag = 3 ;
 }
 	
 
@@ -307,13 +337,12 @@ void modis_hdf::calib_thermal_bands () {
 		offv = th_scales_offsets [16+bnum] ;
 		scalev =  th_scales_offsets [bnum] ;
 		for (is=0; is<npix; is++) {
+                       
 			val = thermdata[bnum * npix + is] ;
 			raddata_cal[i*npix+is]=(val-offv) * scalev ;
 		}
 	}
-	FILE *fout = fopen ("/home/harold/foutdat", "w") ;
-	fwrite ((char *)raddata_cal,4,3*1354l*2030L, fout) ;
-	fclose(fout) ;
+	
 
 }
 

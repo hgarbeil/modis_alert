@@ -4,7 +4,7 @@ hdflibs = -L/hbeta/harold/lhome/external/hdf-4.2.13/lib -lm -lmfhdf -ldf -ljpeg 
 hdfinc = -I/hbeta/harold/lhome/external/hdf-4.2.13/include 
 
 OBJS = main.o  modis_hdf.o  surftemp.o modis_process.o
-OBJS_alert = main_alert.o  modis_hdf.o  surftemp.o modis_process.o
+OBJS_alert = main_alert.o  modis_hdf.o  surftemp.o modis_process.o sinuProjection.o
 
 modis_alert : ${OBJS_alert}
 	${CC} ${OBJS_alert} ${hdflibs} -o modis_alert

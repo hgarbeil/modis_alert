@@ -19,7 +19,8 @@ class modis_hdf {
 
 
 public:
-    bool thermFlag, aquaflag, dayflag;
+    bool thermFlag, aquaflag, dayflag ;
+    int aq_terra_flag;
     uint16 *thermdata, *refldata;
     float *latarr, *lonarr;
     int16 *solzen, *solaz, *senszen, *sensaz;
@@ -28,6 +29,7 @@ public:
     modis_hdf(char *);
     ~modis_hdf();
     int open_hdf();
+    void get_aq_terra_flag () ;
     void init_MOD21();
     void init_MOD03();
     void load_geometry();

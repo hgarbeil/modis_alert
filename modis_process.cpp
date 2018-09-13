@@ -1,6 +1,7 @@
 #include "modis_process.h"
 #include <math.h>
 #include "surftemp.h"
+#include "sinuProjection.h"
 
 modis_process::modis_process() {
 
@@ -14,6 +15,10 @@ modis_process::modis_process() {
     day_limit = -.6;
     night_limit = -.8;
     alerts = new float [ns * nl];
+    sp = 0L ;
+    glob_mnstdev = 0L ;
+    basevals_full = 0l ;
+    alertFlag = false ;
 
 
 }
@@ -24,11 +29,14 @@ modis_process::~modis_process() {
     delete [] distarr;
     delete [] alerts;
     if (temp) delete [] temp;
+    if (basevals_full) delete[] basevals_full ;
+    delete [] glob_mnstdev ;
 }
 
 void modis_process::set_modis_hdfs(modis_hdf *g, modis_hdf *th) {
     geom = g;
     therm = th;
+    alertFlag = false ;
 }
 
 void modis_process::set_bounds(float ulc_lat, float ulc_lon, float lrc_lat,
@@ -53,17 +61,22 @@ void modis_process::set_bounds(float ulc_lat, float ulc_lon, float lrc_lat,
     if (distarr) {
         delete [] distarr;
         delete [] bandsarr;
+        delete [] glob_mnstdev ;
     }
     distarr = new float [npix_grid];
-    bandsarr = new float [8 * npix_grid];
+    bandsarr = new float [7 * npix_grid];
+    glob_mnstdev = new float [6 * npix_grid] ;
+    // alloc memory for the baseline data b221, b32, may do all b6 and ndti
+    
     for (i = 0; i < npix_grid; i++) {
         distarr [i] = 9999.;
     }
-    for (i = 0; i < npix_grid * 8; i++) {
+    for (i = 0; i < npix_grid * 7; i++) {
         bandsarr [i] = -1.;
     }
 
 }
+
 
 void modis_process::set_month(int mon) {
     this->mon = mon;
@@ -109,7 +122,7 @@ void modis_process::get_nearest_pixel(float lat, float lon, int *index, float *p
     // solar zenith
     pixvals[5] = geom->solzen[minind] / 100.;
 }
-
+/*
 void modis_process::procalert() {
 
     float plat, plon, dist_pixel;
@@ -181,7 +194,7 @@ void modis_process::procalert() {
 
 
 }
-
+*/
 float modis_process::calcdist(float plat, float plon) {
 
     double xdist, ydist, tdist;
@@ -198,11 +211,14 @@ void modis_process::process() {
 
     int i, j, ib, snum, is, js, ixloc, iyloc, grid_x, grid_y, gridloc, npix_grid;
     float xloc, yloc, xdist, ydist, dist, latval, lonval;
-    npix_grid = ny_grid * nx_grid ;;
+    npix_grid = ny_grid * nx_grid;
+    ;
 
+    //if (!alertFlag) this->calc_alert() ;
 
     for (i = 0; i < 2030; i++) {
         for (j = 0; j < 1354; j++) {
+             
             snum = i * 1354 + j;
             latval = geom->latarr[snum];
             lonval = geom->lonarr[snum];
@@ -211,6 +227,8 @@ void modis_process::process() {
             if (lonval < startlon || lonval > endlon)
                 continue;
 
+           
+            
             xloc = (lonval - startlon) / gridspace;
             yloc = (startlat - latval) / gridspace;
             ixloc = int(xloc + 0.5);
@@ -234,13 +252,15 @@ void modis_process::process() {
                         distarr[gridloc] = dist;
                         bandsarr[gridloc] = therm->refdata_cal[snum];
                         // resample the three bands of radiance to bandsarr
+                        
                         for (ib = 0; ib < 3; ib++)
                             bandsarr[(ib + 1L) * npix_grid + gridloc] = therm->raddata_cal[ib * 2030L * 1354 + snum];
-                       
-                        bandsarr[4L * npix_grid + gridloc] = geom->solsens[snum];
-                        bandsarr[5L * npix_grid + gridloc] = geom->solsens[2030L * 1354 + snum];
-                        bandsarr[6L * npix_grid + gridloc] = geom->solsens[2 * 2030L * 1354 + snum];
-                        bandsarr[7L * npix_grid + gridloc] = geom->solsens[3 * 2030L * 1354 + snum];
+                        bandsarr[4*npix_grid+gridloc] = *(alerts+snum) ;
+
+                        //bandsarr[4L * npix_grid + gridloc] = geom->solsens[snum];
+                        //bandsarr[5L * npix_grid + gridloc] = geom->solsens[2030L * 1354 + snum];
+                        //bandsarr[6L * npix_grid + gridloc] = geom->solsens[2 * 2030L * 1354 + snum];
+                        //bandsarr[7L * npix_grid + gridloc] = geom->solsens[3 * 2030L * 1354 + snum];
 
                     }
                 }
@@ -249,48 +269,64 @@ void modis_process::process() {
     }
 }
 
-void modis_process::calc_alert(char *outfile) {
-    char hdrfile [420];
-    int i, ib, npix;
-    float val21, val22, val32, val6, alval;
+void modis_process::calc_alert(char *alertfile) {
+    char hdrfile [420], outstr[240];
+    int i, ind, ib, npix, num_alerts_full;
+    float zval, val21, val22, val32, val6, alval, alert_limit ;
 
     npix = 2030 * 1354L;
     alinds.clear();
+    alertFlag = true ;
 
-    if (therm->dayflag)
-        for (i = 0; i < npix; i++) {
-            // band 6,21,22, 32
-            val6 = therm->refdata_cal[i];
-            val21 = therm->raddata_cal[i];
-            val22 = therm->raddata_cal[npix + i];
-            val32 = therm->raddata_cal[2 * npix + i];
-            if (val21 > val22)
-                val22 = val21;
-            val22 = val22 - .0426 * val6;
-            alval = (val22 - val32) / (val22 + val32);
-            if (alval < night_limit)
-                alinds.push_back(i);
-            *(alerts + i) = alval;
-        } else
-        for (i = 0; i < npix; i++) {
-            // band 6,21,22, 32
-            val6 = therm->refdata_cal[i];
-            val21 = therm->raddata_cal[i];
-            val22 = therm->raddata_cal[npix + i];
-            val32 = therm->raddata_cal[2 * npix + i];
-            // check if val22 is saturated, then use val21
-            if (val21 > val22)
-                val22 = val21;
-            alval = (val22 - val32) / (val22 + val32);
-            if (alval < day_limit)
-                alinds.push_back(i);
-            *(alerts + i) = alval;
+    alert_limit = night_limit ;
+    if (geom->dayflag) {
+        alert_limit = day_limit ;
+    }
+    FILE *fout = fopen (alertfile, "w") ;
+    for (i = 0; i < npix; i++) {
+        // band 6,21,22, 32
+        val6 = therm->refdata_cal[i];
+        val21 = therm->raddata_cal[i];
+        val22 = therm->raddata_cal[npix + i];
+        val32 = therm->raddata_cal[2 * npix + i];
+        // check if val22 is saturated, then use val21
+        if (val22 > 2.0 || val22 < 0.001)
+            val22 = val21;
+        // also check to make sure 21 and 32 are good 
+        if (val21 > 105. || val32 > 40.) {
+            *(alerts+i) = -2. ;
+            continue ;
         }
-
-
-
+        if (val32 > 40.) continue ;
+        alval = (val22 - val32) / (val22 + val32);
+        if (alval > -0.05) {
+            int iline = i / 1354 ;
+            int ipix = i - iline * 1354 ;
+            cout << "crazy value hit -- line samp  : "  << iline << "  " << ipix << "  " << endl ;
+            
+        }
+        if (alval > alert_limit)
+            alinds.push_back(i);
+        *(alerts + i) = alval;
+       
+    }
+    num_alerts_full = alinds.size() ;
+    if (basevals_full) delete[] basevals_full ;
+    basevals_full = new float [6 * num_alerts_full] ;
+    cout <<"Number of alerts is modis scene is "  << num_alerts_full << endl ;
+    sp->getCorrespondingValues (alinds, mon, geom->aq_terra_flag, geom->latarr, geom->lonarr, basevals_full) ;
+    for (i=0; i< num_alerts_full; i++) {
+        
+        ind = alinds.at(i) ;
+        zval = (alerts[ind] - basevals_full[6*i+4])/basevals_full[6*i+5] ;
+            sprintf (outstr, "%d\t%7.3f\t%8.3f\t%6.2f\t%6.2f\t%6.3f\t%3.1f\t%7.3f\t%7.3f\r\n", 
+                    ind, geom->latarr[ind], geom->lonarr[ind], therm->raddata_cal[ind], therm->raddata_cal[2*npix+ind],
+                    alerts[ind], zval, basevals_full[6*i+4], basevals_full[6*i+5]) ;
+        fputs (outstr, fout)  ;  
+    }
+    fclose (fout) ;
 }
-
+      
 // write out each alert to an appended file with the following columns
 // mod21 filename
 // year
@@ -317,7 +353,8 @@ void modis_process::write_output(char *outfile) {
 
     strcpy(hdrfile, outfile);
     strcat(hdrfile, ".hdr");
-    //write_header(hdrfile, 6);
+    write_header(hdrfile, 13);
+    cout << "Output file is : " << outfile << endl ;
 
     FILE *fout = fopen(outfile, "w");
     if (fout == NULL) {
@@ -325,7 +362,13 @@ void modis_process::write_output(char *outfile) {
         return;
     }
     
-    fwrite((char *) bandsarr, 4, 8 * npix, fout);
+    
+    fwrite((char *) bandsarr, 4, 7 * npix, fout);
+    
+    
+    // band21,22,32,alert, mean stdev
+    fwrite((char *) this->glob_mnstdev, 4, 6 * npix, fout) ;
+    
     
    // fwrite ((char *) this->bandsarr, 4, 8* npix, fout) ;
     
@@ -337,12 +380,12 @@ void modis_process::write_header(char *outfile, int nbands) {
 
     FILE *hdrout = fopen(outfile, "w");
     char bnames [1200];
-    strcpy(bnames, "band names = {\nModisBand6,ModisBand21,ModisBand22,ModisBand32,\nSolarAzimuth,SolarZenith,SensorAzimuth,SensorZenith}\n");
+    strcpy(bnames, "band names = {\nModisBand6,ModisBand21,ModisBand22,ModisBand32,Alert,Alert_z, Alert_rat,10yr_2122,10yr_2221_stdv,10yr_32,10yr_32_stdv, 10yr_nti, 10yr_nti_stdv}\n");
 
     fprintf(hdrout, "ENVI\ndescription = {\nMOD021KM - MOD03  }\n");
-    fprintf(hdrout, "samples    = %5d\n", ns);
-    fprintf(hdrout, "lines      = %5d\n", nl);
-    fprintf(hdrout, "bands      = nbands\n");
+    fprintf(hdrout, "samples    = %5d\n", nx_grid);
+    fprintf(hdrout, "lines      = %5d\n", ny_grid);
+    fprintf(hdrout, "bands      = %3d\n", nbands);
     fprintf(hdrout, bnames);
     fprintf(hdrout, "header offset = 0 \n");
     fprintf(hdrout, "file type = ENVI Standard \n");
@@ -376,6 +419,34 @@ float modis_process::bb_radtotemp(float wave, float rad) {
     return float(val0);
 }
 
+void modis_process::zscore () {
+    int i, npix ;
+    npix = nx_grid * ny_grid ;
+    float alval ;
+    for (i=0; i<npix; i++) {
+        
+        alval = (bandsarr[4*npix+i]-glob_mnstdev[4*npix+i]) / glob_mnstdev[5*npix+i] ;
+        bandsarr[5*npix+i] = alval ;
+        bandsarr[6*npix+i] =   glob_mnstdev[4*npix+i] / bandsarr[4*npix+i];
+    }
+    
+    
+}
+
+
+void modis_process::extract_from_baseline_file () {
+    int i ;
+    sp = new sinuProjection () ; 
+    
+    
+    //sp->set_projection_parameters ()
+    sp->fillGrid (this->mon, this->geom->aq_terra_flag, startlat, startlon, gridspace, nx_grid, ny_grid, glob_mnstdev) ;
+    //for (i=0; i<nx_grid*ny_grid; i++) {
+    
+}
+
+
+
 /*
 https://cimss.ssec.wisc.edu/dbs/China2011/Day2/Lectures/MODIS_DB_Land_Surface_Temperature_reference.pdf
 float modis_process::bb_radtotemp (float wave, float rad) {
@@ -395,6 +466,3 @@ float modis_process::bb_radtotemp (float wave, float rad) {
 
 
  */
-
-
-

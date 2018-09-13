@@ -1,8 +1,4 @@
-//#include "kml.h"
-//#include "plotfunc.h"
 #include "surftemp.h"
-//#include "support/elapsedtime.h"
-//#include "support/timelib.h"
 #include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -16,6 +12,7 @@
 
 lst_handle lhandle;
 gst_handle ghandle;
+m02ssh_handle mhandle;
 
 int32_t gst_open()
 {
@@ -30,30 +27,30 @@ int32_t gst_open()
     return 0;
 }
 
-int32_t gst_read(vector<lst_coord> &coords)
+int32_t gst_read(vector<lst_coordvalue> &coords)
 {
     int32_t iretn;
     for (size_t ic=0; ic<coords.size(); ++ic)
     {
         alert_entry entry;
-        entry.latitude = coords[ic].lat;
-        entry.longitude = coords[ic].lon;
+        entry.latitude = coords[ic].lat * 180. / M_PIl;
+        entry.longitude = coords[ic].lon * 180. / M_PIl;
         entry.date = (int)(currentmjd()) + (coords[ic].month - .5) / 12;
         switch (coords[ic].period)
         {
-        case lst_period::AQUA_DAY:
+        case modis_period::AQUA_DAY:
             entry.sat = ALERT_SAT_AQUA;
             entry.sun_zenith = 45.;
             break;
-        case lst_period::AQUA_NIGHT:
+        case modis_period::AQUA_NIGHT:
             entry.sat = ALERT_SAT_AQUA;
             entry.sun_zenith = 135.;
             break;
-        case lst_period::TERRA_DAY:
+        case modis_period::TERRA_DAY:
             entry.sat = ALERT_SAT_TERRA;
             entry.sun_zenith = 45.;
             break;
-        case lst_period::TERRA_NIGHT:
+        case modis_period::TERRA_NIGHT:
             entry.sat = ALERT_SAT_TERRA;
             entry.sun_zenith = 135.;
             break;
@@ -181,8 +178,9 @@ int32_t gst_close()
     return 0;
 }
 
-int32_t lst_open()
+int32_t lst_open(string base)
 {
+    lhandle.base = base;
     lhandle.qindex = lst_max_quad;
     lhandle.qcount = 0;
     lhandle.quads.resize(lst_max_quad);
@@ -203,7 +201,7 @@ int32_t lst_open()
     return 0;
 }
 
-int32_t lst_read(vector<lst_coord> &coords)
+int32_t lst_read(vector<lst_coordvalue> &coords)
 {
     for (size_t ic=0; ic<coords.size(); ++ic)
     {
@@ -220,7 +218,7 @@ int32_t lst_read(vector<lst_coord> &coords)
 
 }
 
-int32_t lst_load(lst_coord &coord)
+int32_t lst_load(lst_coordvalue &coord)
 {
     if (lhandle.qcount && lhandle.hgrid == coord.hgrid && lhandle.vgrid == coord.vgrid)
     {
@@ -265,8 +263,13 @@ int32_t lst_load(lst_coord &coord)
     lhandle.vgrid = coord.vgrid;
 
     char path[200];
-    sprintf(path, "/local/worldbase/lst/%02u_%1u/h%02uv%02u.bsq", coord.month, coord.period, coord.hgrid, coord.vgrid);
-    lhandle.quads[lhandle.qindex].ff = fopen(path, "rb");
+    sprintf(path, "/local/worldbase/%s/%02u_%1u/h%02uv%02u.bsq", lhandle.base.c_str(), coord.month, coord.period, coord.hgrid, coord.vgrid);
+    FILE *tff = fopen(path, "rb");
+    if (tff == nullptr)
+    {
+        return -errno;
+    }
+    lhandle.quads[lhandle.qindex].ff = tff;
 
     lhandle.quads[lhandle.qindex].month = coord.month;
     lhandle.quads[lhandle.qindex].period = coord.period;
@@ -277,11 +280,11 @@ int32_t lst_load(lst_coord &coord)
     {
         if (lhandle.quads[lhandle.qindex].ff == nullptr)
         {
-            memset(lhandle.quads[lhandle.qindex].mean[i].data(), 0, sizeof(double) * lst_size);
+            memset(lhandle.quads[lhandle.qindex].mean[i].data(), 0, sizeof(float) * lst_size);
         }
         else
         {
-            fread(lhandle.quads[lhandle.qindex].mean[i].data(), sizeof(double), lst_size, lhandle.quads[lhandle.qindex].ff);
+            fread(lhandle.quads[lhandle.qindex].mean[i].data(), sizeof(float), lst_size, lhandle.quads[lhandle.qindex].ff);
         }
     }
 
@@ -289,11 +292,11 @@ int32_t lst_load(lst_coord &coord)
     {
         if (lhandle.quads[lhandle.qindex].ff == nullptr)
         {
-            memset(lhandle.quads[lhandle.qindex].std[i].data(), 0, sizeof(double) * lst_size);
+            memset(lhandle.quads[lhandle.qindex].std[i].data(), 0, sizeof(float) * lst_size);
         }
         else
         {
-            fread(lhandle.quads[lhandle.qindex].std[i].data(), sizeof(double), lst_size, lhandle.quads[lhandle.qindex].ff);
+            fread(lhandle.quads[lhandle.qindex].std[i].data(), sizeof(float), lst_size, lhandle.quads[lhandle.qindex].ff);
         }
     }
     lhandle.quads[lhandle.qindex].date = currentmjd();
@@ -311,7 +314,7 @@ int32_t lst_close()
     return 0;
 }
 
-int32_t lst_index(lst_coord &coord)
+int32_t lst_index(lst_coordvalue &coord)
 {
     double lat = fmod(coord.lat + M_PI_2l, M_PIl) - M_PI_2l;
     double slat = lat / lst_step;
@@ -331,6 +334,31 @@ int32_t lst_index(lst_coord &coord)
     }
     coord.hindex = lst_size * (slon - ((int16_t)coord.hgrid - 18)) - .5;
 
+    return 0;
+}
+
+int32_t lst_coord(lst_coordvalue &coord)
+{
+    coord.lat = lst_step * ((9 - (int16_t)coord.vgrid) - (coord.vindex + .5) / lst_size);
+    coord.lon = (lst_step / cos(coord.lat)) * (((int16_t)coord.hgrid - 18) + (coord.hindex + .5) / lst_size);
+    return 0;
+}
+
+int32_t m02ssh_index(m02ssh_coordvalue &coord)
+{
+    double lat = fmod(coord.lat + M_PI_2, M_PI) - M_PI_2;
+    coord.vindex = (M_PI_2 - lat) / m02ssh_step;
+
+    double lon = fmod(coord.lon + M_PI, 2. * M_PI) - M_PI;
+    coord.hindex = m02ssh_height + .5 + (cos(lat) * lon) / m02ssh_step;
+
+    return 0;
+}
+
+int32_t m02ssh_coord(m02ssh_coordvalue &coord)
+{
+    coord.lat = M_PI_2 - m02ssh_step * (coord.vindex + .5);
+    coord.lon = (m02ssh_step / cos(coord.lat)) * (coord.hindex + .5);
     return 0;
 }
 
@@ -360,6 +388,81 @@ calstruc mjd2cal(double mjd)
     }
 
     return date;
+}
+
+int32_t m02ssh_open(string product, uint16_t jday, modis_period period)
+{
+    char path[200];
+
+    if (product == "count")
+    {
+        mhandle.count.resize(m02ssh_height);
+
+        sprintf(path, "/local/worldbase/02ssh/count_%03u_%02hhu.bsq", jday, static_cast<uint8_t>(period));
+        FILE *cfp = fopen(path, "rb");
+        if (cfp == nullptr)
+        {
+            return -errno;
+        }
+
+        for (uint16_t ir=0; ir<m02ssh_height; ++ir)
+        {
+            mhandle.count[ir].resize(m02ssh_width);
+            fread(mhandle.count[ir].data(), sizeof(uint16_t), m02ssh_width, cfp);
+        }
+
+        fclose(cfp);
+    }
+    else
+    {
+        mhandle.mean.resize(m02ssh_height);
+        mhandle.std.resize(m02ssh_height);
+        sprintf(path, "/local/worldbase/02ssh/%s_%03u_%02hhu.bsq", product.c_str(), jday, static_cast<uint8_t>(period));
+        FILE *dfp = fopen(path, "rb");
+        if (dfp == nullptr)
+        {
+            return -errno;
+        }
+
+        for (uint16_t ir=0; ir<m02ssh_height; ++ir)
+        {
+            mhandle.mean[ir].resize(m02ssh_width);
+            fread(mhandle.mean[ir].data(), sizeof(float), m02ssh_width, dfp);
+        }
+
+        for (uint16_t ir=0; ir<m02ssh_height; ++ir)
+        {
+            mhandle.std[ir].resize(m02ssh_width);
+            fread(mhandle.std[ir].data(), sizeof(float), m02ssh_width, dfp);
+        }
+
+        fclose(dfp);
+    }
+
+    return 0;
+}
+
+int32_t m02ssh_read(vector<m02ssh_coordvalue> &coords)
+{
+    for (size_t ic=0; ic<coords.size(); ++ic)
+    {
+        m02ssh_index(coords[ic]);
+        if (mhandle.mean.size())
+        {
+            coords[ic].mean = mhandle.mean[coords[ic].vindex][coords[ic].hindex];
+        }
+        if (mhandle.std.size())
+        {
+            coords[ic].std = mhandle.std[coords[ic].vindex][coords[ic].hindex];
+        }
+        if (mhandle.count.size())
+        {
+            coords[ic].count = mhandle.count[coords[ic].vindex][coords[ic].hindex];
+        }
+    }
+
+    return 0;
+
 }
 
 int32_t mjd2ymd(double mjd, int32_t &year, int32_t &month, double &day, double &doy)
